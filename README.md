@@ -10,7 +10,7 @@ Set up the Desk Lead in Grok Bot using the pinned bootstrap below. It opens with
 
 ## Start
 
-The v1.5.0 bootstrap installs the complete seventeen-skill release and verifies native role and skill instructions. Its public template is being refreshed; use the pinned bootstrap below until publication is verified.
+Add the [public HyperGrok Desk Lead template](https://x.ai/bot/-c_oDxnkrXbWhBz-u4qu5), then send **Start the desk.** Its v1.5.0 bootstrap installs the complete seventeen-skill release and verifies native role and skill instructions. The pinned bootstrap below is also available.
 
 Alternatively, open Grok Bot and paste this to a Bot:
 

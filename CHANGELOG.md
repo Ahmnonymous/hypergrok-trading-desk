@@ -7,7 +7,7 @@
 + Correct unknown-send recovery: a newer noop does not invalidate every lower nonce. Capture the original signed nonce before dispatch; exact-nonce recovery needs its own approved ticket and confirmed acceptance, followed by reconciliation. Missing or unconfirmed evidence keeps risk reserved and new exposure paused. Expiry blocks late acceptance but does not cancel an accepted order.
 + Replace float-first spot formatting with exact Decimal helpers, preserving valid integer prices and approved buy ceilings/sell floors. Reject nonfinite and zero-rounded values and verify SDK wire encoding before signing.
 + Publish `hypergrok-trading-desk` as an npm resource package with an exact file allowlist, all seventeen skills and notices, seven roles, six plugin manifests and read-only tools. No runtime dependencies, JavaScript executor or install hooks are included. Contract and actual artifact checks guard release identity and private-state exclusions.
-+ Refresh the pinned bootstrap, changed skill versions and reviewed hashes. The public Bot template contract is prepared for publication; current installation evidence is recorded separately from the earlier October 2 native acceptance.
++ Refresh the pinned bootstrap, changed skill versions and reviewed hashes. Published the refreshed public Bot template and verified its preview and complete native bootstrap body; current installation evidence is recorded separately from the earlier October 2 native acceptance.
 
 ## 1.4.8 - 2026-10-02
 

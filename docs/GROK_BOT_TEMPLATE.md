@@ -70,6 +70,14 @@ The Desk Lead follows `hypergrok-bootstrap`. A passing result has:
 
 Do not describe the template as a zero-interaction installer. **Add to Grok Bot** creates the Desk Lead; **Start the desk.** runs the reviewed setup. The public path is one click and one message.
 
+## Publication verification - 2026-10-08
+
+The [1.5.0 public template](https://x.ai/bot/-c_oDxnkrXbWhBz-u4qu5) was published from source commit `5eb1d9a82157440d64f25a72cd06d9f3977dc472`. The native Context panel showed only the public description and one `hypergrok-bootstrap` skill, with no memories, plugins or routines. Complete independent native Settings readback verified the exact name, description and 9,450-byte normalized Markdown body, SHA-256 `be054eedaad650646148b10d5af49f143eddb64f9f1554df8c4632f7277051af`, against the tagged source. This is stored native skill evidence, not a hash of a staged argument. Grok rebuilds its YAML wrapper without source license or metadata.
+
+The anonymous public preview matches the release description, Add action and new deep-link ID. The public avatar is Grok's geometric default and its creator attribution follows the publishing account. The previous October 2 share has a different ID; current install surfaces use the new link. A clean pinned-tag clone passed the complete repository gate. A fresh public import/setup round trip was not performed during this release, and the earlier native desk acceptance does not prove one for 1.5.0.
+
+The reviewed template is publicly shared. A search of the curated Grok Bot marketplace returned no HyperGrok listing, and its visible page and official sharing guide exposed no submission action. Public sharing does not establish catalog acceptance.
+
 ## Publication and native test - 2026-10-02
 
 Release 1.4.7 was published as [HyperGrok Desk Lead](https://x.ai/bot/1HXwKKdavqHZRzSsWbDCN). Its anonymous preview and the public-template workflow passed. Andrew imported a new Bot, then **Start the desk.** was sent. The native readback reported the loaded bootstrap body as 5,594 bytes with SHA-256 `264dc49723a2a9cac4b4c0b61026ecc075a363a21ac01a6b89b5c474c85ae622`, matching the reviewed source at commit `1063e6c40fcfd287edf2d118669689a5297d066f` after removing frontmatter and the leading blank line/final newline. This proves normalized body equivalence, not complete-file byte identity.

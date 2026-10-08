@@ -17,6 +17,16 @@ namespace = dict(Decimal=Decimal, ROUND_DOWN=ROUND_DOWN, ROUND_UP=ROUND_UP,
                  ROUND_HALF_UP=ROUND_HALF_UP, SZ_DECIMALS={'ETH': 4, 'BTC': 5, 'TINY': 0})
 exec(compile(helpers, '<published order helpers>', 'exec'), namespace)
 
+advanced = (ROOT / 'skills/hyperliquid-advanced/SKILL.md').read_text()
+spot_header = re.search(r'## Spot orders.*?```python\n(.*?)\n```', advanced, re.S).group(1)
+spot_tree = ast.parse(spot_header)
+spot_helpers = ast.Module(body=[node for node in spot_tree.body if isinstance(node, ast.FunctionDef)
+                              and node.name in {'round_px_spot', 'round_sz_spot', 'bounded_px_spot'}],
+                          type_ignores=[])
+spot_namespace = dict(Decimal=Decimal, ROUND_DOWN=ROUND_DOWN, ROUND_UP=ROUND_UP,
+                      ROUND_HALF_UP=ROUND_HALF_UP, base_dec=3)
+exec(compile(spot_helpers, '<published spot helpers>', 'exec'), spot_namespace)
+
 
 class OrderRoundingTest(unittest.TestCase):
     def test_typescript_trigger_bounds(self):
@@ -72,6 +82,53 @@ class OrderRoundingTest(unittest.TestCase):
         for invalid in ('NaN', 'Infinity', '-0.1', '1', '2'):
             with self.subTest(slippage=invalid), self.assertRaises(ValueError):
                 namespace['bounded_px']('ETH', '3000', invalid, True)
+
+    def test_spot_decimal_input_and_integer_exception(self):
+        spot_namespace['base_dec'] = 3
+        price = spot_namespace['round_px_spot']
+        size = spot_namespace['round_sz_spot']
+        self.assertEqual(price('0.123456'), Decimal('0.12346'))
+        self.assertEqual(price('117234'), Decimal('117234'))
+        self.assertEqual(price('117234.5', rounding=ROUND_DOWN), Decimal('117234'))
+        self.assertEqual(price('117234.5', rounding=ROUND_UP), Decimal('117235'))
+        self.assertEqual(size('0.1239'), Decimal('0.123'))
+        self.assertIsInstance(price('0.123456'), Decimal)
+        self.assertIsInstance(size('0.1239'), Decimal)
+        spot_namespace['base_dec'] = 0
+        self.assertEqual(price('0.00000123456'), Decimal('0.00000123'))
+
+    def test_spot_directional_bounds_and_venue_precision(self):
+        bound = spot_namespace['bounded_px_spot']
+        for base_dec in (0, 2, 5):
+            spot_namespace['base_dec'] = base_dec
+            for reference in ('0.123456', '1.234567', '99.9999', '3000.06', '99999.9', '117234.5'):
+                for slippage in ('0', '0.002', '0.05'):
+                    for buy in (True, False):
+                        with self.subTest(base_dec=base_dec, reference=reference, slippage=slippage, buy=buy):
+                            actual = bound(reference, slippage, buy)
+                            approved = Decimal(reference) * (1 + Decimal(slippage) if buy else 1 - Decimal(slippage))
+                            self.assertTrue(actual <= approved if buy else actual >= approved)
+                            self.assertGreater(actual, 0)
+                            # SDK 0.24.0 serializes numeric order fields at eight decimal places.
+                            encoded = Decimal(format(float(actual), '.8f'))
+                            self.assertEqual(encoded, actual)
+                            self.assertTrue(encoded <= approved if buy else encoded >= approved)
+                            if actual != actual.to_integral_value():
+                                self.assertLessEqual(len(actual.normalize().as_tuple().digits), 5)
+                                self.assertGreaterEqual(actual.normalize().as_tuple().exponent, -(8 - base_dec))
+
+    def test_spot_invalid_values_fail_before_sdk(self):
+        spot_namespace['base_dec'] = 3
+        for helper in ('round_px_spot', 'round_sz_spot'):
+            for invalid in ('NaN', 'Infinity', '-Infinity', '0', '-1', '0.0000000001'):
+                with self.subTest(helper=helper, value=invalid), self.assertRaises(ValueError):
+                    spot_namespace[helper](invalid)
+        for invalid in ('NaN', 'Infinity', '-Infinity', '0', '-1'):
+            with self.subTest(reference=invalid), self.assertRaises(ValueError):
+                spot_namespace['bounded_px_spot'](invalid, '0.01', True)
+        for invalid in ('NaN', 'Infinity', '-Infinity', '-0.1', '1', '2'):
+            with self.subTest(slippage=invalid), self.assertRaises(ValueError):
+                spot_namespace['bounded_px_spot']('0.1234', invalid, True)
 
 
 if __name__ == '__main__':

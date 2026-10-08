@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import argparse
 import hashlib
 import json
 import os
@@ -12,6 +11,8 @@ import sys
 import urllib.error
 import urllib.request
 from dataclasses import asdict, dataclass
+
+from cli_contract import ReadOnlyParser, add_network_arguments, describe, emit_error, network_settings
 
 SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+$")
 # What the checkout says it ships, read from the two lists it already publishes
@@ -144,10 +145,12 @@ def check_repository(root: str) -> list[Check]:
     try:
         with open(os.path.join(root, "plugin.json"), encoding="utf-8") as handle:
             manifest = json.load(handle)
+        if not isinstance(manifest, dict):
+            raise ValueError("plugin.json must be an object")
         version = manifest.get("version")
         valid = isinstance(version, str) and bool(SEMVER_RE.match(version))
         checks.append(result(valid, "release", f"manifest version {version}", f"plugin.json version {version!r} is not a release version"))
-    except (OSError, json.JSONDecodeError) as exc:
+    except (OSError, ValueError) as exc:
         checks.append(Check("FAIL", "release", f"cannot read plugin.json: {exc}"))
 
     checks.append(inventory(root, "skills", SKILL_INDEX, present_skills(root)))
@@ -205,7 +208,8 @@ def check_public_api(base_url: str, timeout: float) -> Check:
             payload = json.load(response)
         if not isinstance(payload, dict) or not payload.get("ETH"):
             return Check("FAIL", "public API", "allMids response did not contain ETH")
-        return Check("PASS", "public API", "mainnet /info allMids answered without a key")
+        network = "mainnet" if base_url == "https://api.hyperliquid.xyz" else "testnet" if base_url == "https://api.hyperliquid-testnet.xyz" else "custom"
+        return Check("PASS", "public API", f"{network} /info allMids answered without a key")
     except (OSError, urllib.error.URLError, json.JSONDecodeError) as exc:
         return Check("FAIL", "public API", f"unavailable: {exc}")
 
@@ -221,21 +225,36 @@ def render(checks: list[Check]) -> str:
 
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
+    argv = list(sys.argv[1:] if argv is None else argv)
+    parser = ReadOnlyParser(description=__doc__, machine_readable="--json" in argv or "--schema" in argv)
     parser.add_argument("--repo-root", default=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     parser.add_argument("--desk-root", help="also validate a prepared trading-desk directory")
-    parser.add_argument("--base-url", default="https://api.hyperliquid.xyz")
-    parser.add_argument("--timeout", type=float, default=15.0)
+    add_network_arguments(parser)
     parser.add_argument("--offline", action="store_true", help="skip the public connectivity check")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
+    if args.schema:
+        print(json.dumps(describe("desk_doctor", {"schema_version": 1, "mode": "read-only",
+            "network": "mainnet | testnet | custom", "checks": [{"status": "PASS | WARN | FAIL | SKIP", "name": "string", "detail": "string"}],
+            "safety": "No key access. No exchange writes. An offline SKIP does not prove connectivity; warnings do not establish trading readiness."
+        }), indent=2))
+        return 0
+    base_url, network = network_settings(args, parser)
 
-    checks = check_repository(os.path.abspath(args.repo_root))
-    if args.desk_root:
-        checks.extend(check_workspace(os.path.abspath(args.desk_root)))
-    checks.append(Check("SKIP", "public API", "offline mode") if args.offline else check_public_api(args.base_url, args.timeout))
+    try:
+        checks = check_repository(os.path.abspath(args.repo_root))
+        if args.desk_root:
+            checks.extend(check_workspace(os.path.abspath(args.desk_root)))
+        checks.append(Check("SKIP", "public API", "offline mode") if args.offline else check_public_api(base_url, args.timeout))
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        if args.json:
+            emit_error("source_unavailable", str(exc))
+        else:
+            print(f"Desk doctor unavailable: {exc}", file=sys.stderr)
+        return 1
     if args.json:
-        print(json.dumps({"checks": [asdict(check) for check in checks]}, indent=2))
+        print(json.dumps({"schema_version": 1, "mode": "read-only", "network": network,
+                          "checks": [asdict(check) for check in checks]}, indent=2))
     else:
         print(render(checks))
     return 1 if any(check.status == "FAIL" for check in checks) else 0

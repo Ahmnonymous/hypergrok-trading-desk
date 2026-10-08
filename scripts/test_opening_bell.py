@@ -5,8 +5,9 @@ import json
 import os
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stdout, redirect_stderr
 from decimal import Decimal
+from unittest.mock import patch
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SPEC = importlib.util.spec_from_file_location("opening_bell", os.path.join(ROOT, "scripts", "opening_bell.py"))
@@ -56,6 +57,84 @@ def coarse_book():
 
 
 class OpeningBellTest(unittest.TestCase):
+    def test_schema_does_not_read_files_or_network(self):
+        output = io.StringIO()
+        with patch.object(opening_bell, "fetch_snapshot", side_effect=AssertionError("unexpected read")), redirect_stdout(output):
+            self.assertEqual(opening_bell.main(["--schema"]), 0)
+        schema = json.loads(output.getvalue())
+        self.assertEqual(schema["mode"], "read-only")
+        self.assertEqual(schema["exit_codes"]["2"], "invalid arguments")
+
+    def test_json_argument_failures_are_structured_and_prevent_reads(self):
+        cases = [["--coin", "xyz:TSLA", "--dex", "abc"], ["--timeout", "nan"],
+                 ["--timeout", "0"], ["--coin", "bad coin"], ["--timeout", "nope"],
+                 ["--testnet", "--base-url", "https://example.com"],
+                 ["--base-url", "https://testnet.example.com/path"], ["--unknown"]]
+        for case in cases:
+            with self.subTest(case=case), redirect_stdout(io.StringIO()) as output, redirect_stderr(io.StringIO()) as errors:
+                with patch.object(opening_bell, "fetch_snapshot", side_effect=AssertionError("unexpected read")), self.assertRaises(SystemExit) as exit_error:
+                    opening_bell.main(["--json", *case])
+                self.assertEqual(exit_error.exception.code, 2)
+                self.assertEqual(json.loads(output.getvalue())["error"]["code"], "invalid_arguments")
+                self.assertEqual(errors.getvalue(), "")
+
+    def test_json_unavailable_data_is_not_a_successful_empty_snapshot(self):
+        with redirect_stdout(io.StringIO()) as output, redirect_stderr(io.StringIO()) as errors:
+            with patch.object(opening_bell, "fetch_snapshot", side_effect=ValueError("missing market")):
+                self.assertEqual(opening_bell.main(["--json"]), 1)
+        self.assertEqual(json.loads(output.getvalue())["error"]["code"], "source_unavailable")
+        self.assertEqual(errors.getvalue(), "")
+
+    def test_hip3_queries_use_canonical_prefixed_coin_and_dex(self):
+        meta = [{"universe": [{"name": "xyz:TSLA", "szDecimals": 3, "maxLeverage": 10}]}, [META[1][1]]]
+        book = {**BOOK, "coin": "xyz:TSLA"}
+        with patch.object(opening_bell, "post_info", return_value=meta) as request, patch.object(opening_bell, "fetch_books", return_value=[(None, book)]) as books:
+            snapshot = opening_bell.fetch_snapshot("tsla", opening_bell.DEFAULT_BASE_URL, 15, dex="xyz")
+        request.assert_called_once_with(opening_bell.DEFAULT_BASE_URL, {"type": "metaAndAssetCtxs", "dex": "xyz"}, 15)
+        books.assert_called_once_with("xyz:TSLA", opening_bell.DEFAULT_BASE_URL, 15)
+        self.assertEqual(snapshot["coin"], "xyz:TSLA")
+        self.assertEqual(snapshot["dex"], "xyz")
+        self.assertEqual(snapshot["metadata"]["szDecimals"], 3)
+
+    def test_prefixed_coin_selects_dex_without_case_damage(self):
+        with patch.object(opening_bell, "fetch_snapshot", return_value={}) as fetch, redirect_stdout(io.StringIO()):
+            self.assertEqual(opening_bell.main(["--json", "--coin", "xyz:TSLA"]), 0)
+        self.assertEqual(fetch.call_args.args, ("xyz:TSLA", opening_bell.DEFAULT_BASE_URL, 15.0, None, "xyz"))
+
+    def test_coin_resolution_preserves_mixed_case_and_refuses_unknown_delisted_ambiguous(self):
+        meta = [{"universe": [{"name": "kPEPE"}]}, [META[1][1]]]
+        self.assertEqual(opening_bell.resolve_coin(meta, "KPEPE"), "kPEPE")
+        with self.assertRaisesRegex(ValueError, "unique market"):
+            opening_bell.resolve_coin(meta, "OTHER")
+        meta[0]["universe"][0]["isDelisted"] = True
+        with self.assertRaisesRegex(ValueError, "delisted"):
+            opening_bell.resolve_coin(meta, "kpepe")
+        meta[0]["universe"].append({"name": "KPEPE"})
+        meta[1].append(META[1][1])
+        with self.assertRaisesRegex(ValueError, "unique market"):
+            opening_bell.resolve_coin(meta, "kpepe")
+
+    def test_custom_origin_is_not_labelled_mainnet_or_testnet(self):
+        with patch.object(opening_bell, "post_info", return_value=META), patch.object(opening_bell, "fetch_books", return_value=[(None, BOOK)]):
+            snapshot = opening_bell.fetch_snapshot("ETH", "https://testnet.example.com", 15)
+        self.assertEqual(snapshot["network"], "custom")
+        self.assertEqual(snapshot["source"]["base_url"], "https://testnet.example.com")
+
+    def test_malformed_source_contexts_return_structured_json(self):
+        cases = []
+        for previous in ("0", "-1", "NaN"):
+            meta = json.loads(json.dumps(META))
+            meta[1][1]["prevDayPx"] = previous
+            cases.append(meta)
+        cases.extend(([None, []], [{"universe": None}, []],
+                      [{"universe": [{"name": "ETH"}]}, [None]],
+                      [{"universe": [{"name": "ETH"}]}, []]))
+        for meta in cases:
+            with self.subTest(meta=meta), patch.object(opening_bell, "post_info", return_value=meta), patch.object(opening_bell, "fetch_books", return_value=[(None, BOOK)]), redirect_stdout(io.StringIO()) as output, redirect_stderr(io.StringIO()) as errors:
+                self.assertEqual(opening_bell.main(["--json"]), 1)
+                self.assertEqual(json.loads(output.getvalue())["error"]["code"], "source_unavailable")
+                self.assertEqual(errors.getvalue(), "")
+
     def test_snapshot_is_read_only_and_computes_depth(self):
         snapshot = opening_bell.build_snapshot(META, [(None, BOOK)], "ETH", "fixture")
         self.assertEqual(snapshot["mode"], "read-only")

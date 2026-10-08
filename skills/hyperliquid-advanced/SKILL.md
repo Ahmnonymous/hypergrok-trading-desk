@@ -3,7 +3,7 @@ name: hyperliquid-advanced
 description: Less common Hyperliquid actions and their rules - dead-man's switch (scheduleCancel), TWAP orders, spot orders, expiresAfter and nonces, API wallet approval from code, sub-account and vault addressing, HIP-3 dexs, and what the desk deliberately does not do (transfers, withdrawals, builder fees, staking). Write actions are Execution Trader only, on an approved ticket. Use when a ticket asks for one of these or when a user asks whether the desk can.
 license: MIT
 metadata:
-  version: "1.1.0"
+  version: "1.1.1"
   author: Galleon Labs
   category: hyperliquid
   network-default: testnet
@@ -45,22 +45,50 @@ Same `order` action; asset id is `10000 + index` of the pair in `spotMeta.univer
 
 ```python
 # header from hyperliquid-orders, then spot-specific rounding from spotMeta
+from hyperliquid.utils.signing import float_to_wire
 pair_name = "PURR/USDC"
 spot = info.spot_meta()
 pair = next(p for p in spot["universe"] if p["name"] == pair_name)
 base_dec = next(t for t in spot["tokens"] if t["index"] == pair["tokens"][0])["szDecimals"]
 
-def round_px_spot(px):
-    px = float(f"{float(px):.5g}")
-    return float(Decimal(str(px)).quantize(Decimal(1).scaleb(-(8 - base_dec)), rounding=ROUND_HALF_UP))
+def round_px_spot(px, rounding=ROUND_HALF_UP):
+    value = Decimal(str(px))
+    if not value.is_finite() or value <= 0:
+        raise ValueError("spot price must be finite and positive")
+    max_dec = max(8 - base_dec, 0)
+    exponent = min(0, max(value.adjusted() - 4, -max_dec))
+    result = value.quantize(Decimal(1).scaleb(exponent), rounding=rounding)
+    if result <= 0:
+        raise ValueError("spot price rounds to zero")
+    return result
 
 def round_sz_spot(sz):
-    return float(Decimal(str(sz)).quantize(Decimal(1).scaleb(-base_dec), rounding=ROUND_DOWN))
+    value = Decimal(str(sz))
+    if not value.is_finite() or value <= 0:
+        raise ValueError("spot size must be finite and positive")
+    result = value.quantize(Decimal(1).scaleb(-base_dec), rounding=ROUND_DOWN)
+    if result <= 0:
+        raise ValueError("spot size rounds to zero")
+    return result
 
-sz, px = round_sz_spot(120), round_px_spot(0.1234)
+def bounded_px_spot(reference, slippage, is_buy):
+    reference, slippage = Decimal(str(reference)), Decimal(str(slippage))
+    if not reference.is_finite() or reference <= 0:
+        raise ValueError("spot reference must be finite and positive")
+    if not slippage.is_finite() or not 0 <= slippage < 1:
+        raise ValueError("slippage must be a fraction in [0, 1)")
+    bound = reference * (1 + slippage if is_buy else 1 - slippage)
+    return round_px_spot(bound, rounding=ROUND_DOWN if is_buy else ROUND_UP)
+
+sz, px = round_sz_spot("120"), round_px_spot("0.1234")
 assert sz * px >= 10, "below the 10 quote-token minimum"
-res = exchange.order(pair_name, True, sz, px, {"limit": {"tif": "Gtc"}}, cloid=new_cloid())
+sdk_sz, sdk_px = float(sz), float(px)
+assert Decimal(float_to_wire(sdk_sz)) == sz, "SDK changed the approved size"
+assert Decimal(float_to_wire(sdk_px)) == px, "SDK changed the approved price"
+res = exchange.order(pair_name, True, sdk_sz, sdk_px, {"limit": {"tif": "Gtc"}}, cloid=new_cloid())
 ```
+
+These helpers retain Decimal values until the SDK boundary, preserve valid integer prices, and reject nonfinite or zero results. For a bounded spot IOC use `bounded_px_spot` with the ticket's reference and fractional slippage: buys round down within the ceiling and sells round up within the floor. Verify the final encoded SDK price against that bound before signing; never widen it to obtain a fill.
 
 Read balances with `spotClearinghouseState` (`hyperliquid-account`). Spot has no leverage and no liquidation. Under `unifiedAccount`/`portfolioMargin` abstraction modes balances behave differently; the desk stays in the default mode unless the user changes it in the app.
 
@@ -68,7 +96,8 @@ Read balances with `spotClearinghouseState` (`hyperliquid-account`). Spot has no
 
 - Every signed action carries a `nonce` (unix ms). The SDKs manage it. Nonces are per **signer**, so two processes signing with the same API wallet at the same time will collide; the desk keeps one Execution Trader and one process at a time.
 - `expiresAfter` (ms) makes an action void if it reaches the exchange after that time. Useful protection against a delayed duplicate after a reconnect: `exchange.set_expires_after(get_timestamp_ms() + 60_000)` in Python (applies to following L1 actions; must be `None` for user-signed actions), or per-call `{ expiresAfter }` in TypeScript. A stale rejection costs 5x rate-limit weight, so keep it generous (a minute) rather than tight.
-- `noop` is an action that just burns a nonce; documented as a way to invalidate in-flight actions signed with lower nonces.
+- Hyperliquid retains the highest 100 nonces for each signer and permits out-of-order acceptance within that window. A newer nonce does not invalidate every lower nonce.
+- `noop` marks its own nonce used. To invalidate an unknown in-flight action, a recovery ticket must bind it to the **original exact signed nonce**, the same API wallet signer and the same network. Risk PASS, user approval by id and the native approval gate still apply; only the Execution Trader sends it, once. Confirm that the noop was accepted, then reconcile the original order and account. A nonce-reuse rejection does not confirm the noop landed or establish whether the original executed. If the original nonce is unavailable or the noop result is unconfirmed, keep the reservation and pause new risk; escalate to the Desk Lead and user. See `desk-execution-protocol` for expiry-based recovery.
 
 ## Approving an API wallet from code
 

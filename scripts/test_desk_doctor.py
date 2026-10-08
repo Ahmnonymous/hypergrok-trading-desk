@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 import hashlib
+import io
 import importlib.util
 import json
 import os
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout, redirect_stderr
+from unittest.mock import patch
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SPEC = importlib.util.spec_from_file_location("desk_doctor", os.path.join(ROOT, "scripts", "desk_doctor.py"))
@@ -15,6 +18,46 @@ SPEC.loader.exec_module(desk_doctor)
 
 
 class DeskDoctorTest(unittest.TestCase):
+    def test_schema_skips_repository_and_network_checks(self):
+        with patch.object(desk_doctor, "check_repository", side_effect=AssertionError("unexpected file read")), patch.object(desk_doctor, "check_public_api", side_effect=AssertionError("unexpected network")), redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(desk_doctor.main(["--schema"]), 0)
+        self.assertEqual(json.loads(output.getvalue())["command"], "desk_doctor")
+
+    def test_json_invalid_timeout_blocks_checks(self):
+        for value in ("nan", "inf", "0", "-1", "invalid"):
+            with self.subTest(value=value), redirect_stdout(io.StringIO()) as output, redirect_stderr(io.StringIO()) as errors:
+                with patch.object(desk_doctor, "check_repository", side_effect=AssertionError("unexpected file read")), self.assertRaises(SystemExit) as exit_error:
+                    desk_doctor.main(["--json", "--timeout", value])
+                self.assertEqual(exit_error.exception.code, 2)
+                self.assertEqual(json.loads(output.getvalue())["error"]["code"], "invalid_arguments")
+                self.assertEqual(errors.getvalue(), "")
+
+    def test_json_retains_warnings_and_offline_skip(self):
+        checks = [desk_doctor.Check("WARN", "risk limits", "not written; research-only")]
+        with patch.object(desk_doctor, "check_repository", return_value=checks), redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(desk_doctor.main(["--json", "--offline", "--testnet"]), 0)
+        result = json.loads(output.getvalue())
+        self.assertEqual(result["network"], "testnet")
+        self.assertEqual(result["mode"], "read-only")
+        self.assertEqual([check["status"] for check in result["checks"]], ["WARN", "SKIP"])
+
+    def test_json_failed_check_exits_nonzero(self):
+        with patch.object(desk_doctor, "check_repository", return_value=[desk_doctor.Check("FAIL", "inventory", "missing")]), redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(desk_doctor.main(["--json", "--offline"]), 1)
+        self.assertEqual(json.loads(output.getvalue())["checks"][0]["status"], "FAIL")
+
+    def test_json_malformed_release_manifest_is_a_failed_check(self):
+        for malformed in ([], None, "bad manifest"):
+            with self.subTest(manifest=malformed), tempfile.TemporaryDirectory() as root:
+                with open(os.path.join(root, "plugin.json"), "w") as handle:
+                    json.dump(malformed, handle)
+                with redirect_stdout(io.StringIO()) as output, redirect_stderr(io.StringIO()) as errors:
+                    self.assertEqual(desk_doctor.main(["--json", "--offline", "--repo-root", root]), 1)
+                checks = json.loads(output.getvalue())["checks"]
+                self.assertEqual(checks[0]["status"], "FAIL")
+                self.assertIn("must be an object", checks[0]["detail"])
+                self.assertEqual(errors.getvalue(), "")
+
     SKILLS = [f"skill-{index}" for index in range(16)] + ["hypergrok-bootstrap"]
     AGENTS = [f"agent-{index}" for index in range(7)]
 

@@ -3,7 +3,7 @@ name: hyperliquid-market-data
 description: Read live Hyperliquid market data from the desk computer with curl or the Python SDK - mid, mark and oracle prices, order book depth, funding (current, predicted, historical), open interest, volume, candles, perp and spot metadata, margin tiers, and how to save datasets for the strategy lab. Read-only, no key. Use for any market brief, depth read, funding question or data pull.
 license: MIT
 metadata:
-  version: "1.1.0"
+  version: "1.1.1"
   author: Galleon Labs
   category: hyperliquid
   network-default: mainnet-for-reads
@@ -25,6 +25,19 @@ from hyperliquid.info import Info
 from hyperliquid.utils import constants
 info = Info(constants.MAINNET_API_URL, skip_ws=True)     # TESTNET_API_URL for testnet
 ```
+
+## Read-only snapshot contract
+
+Run `python3 scripts/opening_bell.py --schema` or `python3 scripts/desk_doctor.py --schema` to inspect their machine-readable contracts without file or network reads. With `--json`, successful output carries `schema_version: 1` and `mode: read-only`; invalid arguments return a JSON `error` with exit 2, while unavailable snapshot data or failed doctor checks exit 1. Decimal quantities remain strings. A depth floor is still a floor: inspect each `bid_complete`/`ask_complete` flag, and do not promote a doctor's `WARN` or offline `SKIP` to trading readiness.
+
+```bash
+python3 scripts/opening_bell.py --coin ETH --json
+python3 scripts/opening_bell.py --coin kPEPE --json
+python3 scripts/opening_bell.py --coin xyz:TSLA --json
+python3 scripts/opening_bell.py --dex xyz --coin TSLA --testnet --json
+```
+
+A HIP-3 snapshot requests `metaAndAssetCtxs` with the explicit DEX and `l2Book` with the canonical prefixed coin from that universe. It retains the metadata's spelling and reports `coin`, `dex`, precision and leverage metadata; unknown, ambiguous or delisted markets fail before the book request. Metadata fields absent from the response are `null`, never invented. `--testnet` selects the official testnet origin; an explicit different `--base-url` is labelled `custom` and included in the source. Read-only discovery does not enable HIP-3 execution or transfer collateral; the desk's opt-in and ticket rules still apply.
 
 ## Prices
 

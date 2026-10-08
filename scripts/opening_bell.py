@@ -9,13 +9,15 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 import os
+import re
 import sys
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, DecimalException, InvalidOperation
+
+from cli_contract import ReadOnlyParser, add_network_arguments, describe, emit_error, network_settings
 
 DEFAULT_BASE_URL = "https://api.hyperliquid.xyz"
 BANDS_BPS = (5, 10, 25)
@@ -93,6 +95,12 @@ def read_levels(payload, coin: str) -> list[list[dict]]:
     levels = payload.get("levels") if isinstance(payload, dict) else None
     if not isinstance(levels, list) or len(levels) != 2 or not levels[0] or not levels[1]:
         raise ValueError(f"{coin} order book has no two-sided depth")
+    for side in levels:
+        if not isinstance(side, list) or not all(isinstance(level, dict) for level in side):
+            raise ValueError("order book levels must be objects")
+        for level in side:
+            if decimal(level.get("px"), "book price") <= 0 or decimal(level.get("sz"), "book size") < 0:
+                raise ValueError("order book prices must be positive and sizes nonnegative")
     return levels
 
 
@@ -172,19 +180,48 @@ def load_books(directory: str, coin: str) -> list[tuple[int | None, dict]]:
     return pages
 
 
-def perp_context(meta_and_contexts, coin: str) -> dict:
-    if not isinstance(meta_and_contexts, list) or len(meta_and_contexts) != 2:
+def metadata_rows(meta_and_contexts):
+    if not isinstance(meta_and_contexts, list) or len(meta_and_contexts) != 2 or not isinstance(meta_and_contexts[0], dict):
         raise ValueError("metaAndAssetCtxs returned an unexpected shape")
-    universe = meta_and_contexts[0].get("universe") or []
+    universe = meta_and_contexts[0].get("universe")
     contexts = meta_and_contexts[1]
+    if not isinstance(universe, list) or not isinstance(contexts, list) or len(universe) != len(contexts):
+        raise ValueError("market metadata and contexts must be aligned lists")
+    if not all(isinstance(asset, dict) and isinstance(asset.get("name"), str) for asset in universe):
+        raise ValueError("market metadata must contain named objects")
+    return universe, contexts
+
+
+def perp_context(meta_and_contexts, coin: str) -> dict:
+    universe, contexts = metadata_rows(meta_and_contexts)
     index = next((i for i, asset in enumerate(universe) if asset.get("name") == coin), None)
     if index is None or index >= len(contexts):
-        raise ValueError(f"{coin} is not in the default perp universe")
+        raise ValueError(f"{coin} is not in the default perp universe or selected DEX")
+    if universe[index].get("isDelisted"):
+        raise ValueError(f"{coin} is delisted")
+    if not isinstance(contexts[index], dict):
+        raise ValueError(f"{coin} context must be an object")
     return contexts[index]
+
+
+def resolve_coin(meta_and_contexts, requested: str, dex: str | None = None) -> str:
+    universe, _ = metadata_rows(meta_and_contexts)
+    target = f"{dex}:{requested}" if dex and ":" not in requested else requested
+    matches = [asset.get("name") for asset in universe
+               if isinstance(asset, dict) and isinstance(asset.get("name"), str)
+               and asset["name"].casefold() == target.casefold()]
+    if len(matches) != 1:
+        raise ValueError(f"{target} is not a unique market in the selected perp universe")
+    coin = matches[0]
+    if dex and not coin.startswith(dex + ":"):
+        raise ValueError("market does not belong to the selected DEX")
+    perp_context(meta_and_contexts, coin)
+    return coin
 
 
 def build_snapshot(meta_and_contexts, pages: list[tuple[int | None, dict]], coin: str, network: str) -> dict:
     context = perp_context(meta_and_contexts, coin)
+    asset = next(asset for asset in meta_and_contexts[0]["universe"] if asset["name"] == coin)
     if not pages:
         raise ValueError(f"{coin} order book was not returned")
     finest = read_levels(pages[0][1], coin)
@@ -192,6 +229,8 @@ def build_snapshot(meta_and_contexts, pages: list[tuple[int | None, dict]], coin
 
     mark = decimal(context.get("markPx"), "markPx")
     previous = decimal(context.get("prevDayPx"), "prevDayPx")
+    if mark <= 0 or previous <= 0:
+        raise ValueError("markPx and prevDayPx must be positive")
     funding = decimal(context.get("funding"), "funding")
     open_interest = decimal(context.get("openInterest"), "openInterest")
     timestamp_ms = int(pages[0][1].get("time", 0))
@@ -218,6 +257,7 @@ def build_snapshot(meta_and_contexts, pages: list[tuple[int | None, dict]], coin
         depth[str(band)] = row
 
     return {
+        "schema_version": 1,
         "mode": "read-only",
         "network": network,
         "source": {
@@ -226,6 +266,9 @@ def build_snapshot(meta_and_contexts, pages: list[tuple[int | None, dict]], coin
             "observed_at": observed_at.isoformat().replace("+00:00", "Z"),
         },
         "market": f"{coin}-PERP",
+        "coin": coin,
+        "dex": coin.split(":", 1)[0] if ":" in coin else "",
+        "metadata": {key: asset.get(key) for key in ("szDecimals", "maxLeverage", "onlyIsolated", "marginTableId")},
         "prices": {
             "book_mid": str(book_mid),
             "mark": str(mark),
@@ -261,17 +304,23 @@ def build_snapshot(meta_and_contexts, pages: list[tuple[int | None, dict]], coin
     }
 
 
-def fetch_snapshot(coin: str, base_url: str, timeout: float, fixture_dir: str | None = None) -> dict:
+def fetch_snapshot(coin: str, base_url: str, timeout: float, fixture_dir: str | None = None, dex: str | None = None) -> dict:
     if fixture_dir:
         meta = load_fixture(fixture_dir, "metaAndAssetCtxs", coin)
+        coin = resolve_coin(meta, coin, dex)
         pages = load_books(fixture_dir, coin)
         network = "fixture"
     else:
-        meta = post_info(base_url, {"type": "metaAndAssetCtxs"}, timeout)
-        perp_context(meta, coin)          # an unknown coin fails here, before any book request
+        request = {"type": "metaAndAssetCtxs"}
+        if dex:
+            request["dex"] = dex
+        meta = post_info(base_url, request, timeout)
+        coin = resolve_coin(meta, coin, dex)  # fail before any book request
         pages = fetch_books(coin, base_url, timeout)
-        network = "testnet" if "testnet" in base_url.lower() else "mainnet"
-    return build_snapshot(meta, pages, coin, network)
+        network = "mainnet" if base_url == DEFAULT_BASE_URL else "testnet" if base_url == "https://api.hyperliquid-testnet.xyz" else "custom"
+    snapshot = build_snapshot(meta, pages, coin, network)
+    snapshot["source"]["base_url"] = base_url
+    return snapshot
 
 
 def compact(number: Decimal, prefix: str = "") -> str:
@@ -337,22 +386,42 @@ def render(snapshot: dict) -> str:
 
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--coin", default="ETH", help="default perp coin, e.g. ETH or BTC")
-    parser.add_argument("--base-url", default=DEFAULT_BASE_URL)
-    parser.add_argument("--timeout", type=float, default=15.0)
+    argv = list(sys.argv[1:] if argv is None else argv)
+    parser = ReadOnlyParser(description=__doc__, machine_readable="--json" in argv or "--schema" in argv)
+    parser.add_argument("--coin", default="ETH", help="perp coin, e.g. ETH, kPEPE or xyz:TSLA")
+    parser.add_argument("--dex", help="explicit HIP-3 DEX; also inferred from a prefixed coin")
+    add_network_arguments(parser)
     parser.add_argument("--fixture-dir", help=argparse.SUPPRESS)
     parser.add_argument("--json", action="store_true", help="print machine-readable JSON")
     args = parser.parse_args(argv)
-    coin = args.coin.strip().upper()
-    if not coin or any(character not in "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789:@_-" for character in coin):
+    if args.schema:
+        print(json.dumps(describe("opening_bell", {
+            "schema_version": 1, "mode": "read-only", "network": "mainnet | testnet | custom | fixture",
+            "coin": "canonical metadata name", "dex": "DEX name or empty string", "market": "<coin>-PERP",
+            "metadata": "szDecimals, maxLeverage, onlyIsolated, marginTableId; null means not provided",
+            "source": "endpoint, requests, base_url, observed_at (UTC)",
+            "prices": "decimal strings", "funding": "decimal strings", "activity": "decimal strings",
+            "book": "pages, spread and depth; inspect each bid_complete/ask_complete before calling a band measured",
+            "safety": "No key requested. No account read. No order created or sent."
+        }), indent=2))
+        return 0
+    base_url, _ = network_settings(args, parser)
+    coin = args.coin.strip()
+    if not coin or not re.fullmatch(r"[A-Za-z0-9@_-]+(?::[A-Za-z0-9@_-]+)?", coin):
         parser.error("coin contains unsupported characters")
-    if not math.isfinite(args.timeout) or args.timeout <= 0:
-        parser.error("timeout must be positive")
+    prefix = coin.split(":", 1)[0] if ":" in coin else None
+    dex = args.dex or prefix
+    if dex and not re.fullmatch(r"[a-z][a-z0-9_-]*", dex):
+        parser.error("dex must be a lowercase DEX name")
+    if args.dex and prefix and args.dex != prefix:
+        parser.error("coin prefix and dex must match")
     try:
-        snapshot = fetch_snapshot(coin, args.base_url, args.timeout, args.fixture_dir)
-    except (OSError, ValueError, KeyError, TypeError, urllib.error.URLError, json.JSONDecodeError) as exc:
-        print(f"Opening Bell unavailable: {exc}", file=sys.stderr)
+        snapshot = fetch_snapshot(coin, base_url, args.timeout, args.fixture_dir, dex)
+    except (OSError, ValueError, KeyError, TypeError, DecimalException, OverflowError) as exc:
+        if args.json:
+            emit_error("source_unavailable", str(exc))
+        else:
+            print(f"Opening Bell unavailable: {exc}", file=sys.stderr)
         return 1
     print(json.dumps(snapshot, indent=2, sort_keys=True) if args.json else render(snapshot))
     return 0

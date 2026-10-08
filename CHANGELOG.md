@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.5.0 - 2026-10-08
+
++ Add offline `--schema` discovery and versioned JSON diagnostics to Opening Bell and the desk doctor. Invalid arguments and unavailable sources produce structured failures in JSON mode; warnings, skipped connectivity and incomplete depth keep their original meanings. Testnet selection is explicit and custom origins are labelled honestly.
++ Resolve read-only HIP-3 snapshots from the selected DEX metadata, preserving canonical prefixed and mixed-case coin names and rejecting unknown, ambiguous or delisted markets before reading their book. This does not enable HIP-3 execution or collateral transfers.
++ Correct unknown-send recovery: a newer noop does not invalidate every lower nonce. Capture the original signed nonce before dispatch; exact-nonce recovery needs its own approved ticket and confirmed acceptance, followed by reconciliation. Missing or unconfirmed evidence keeps risk reserved and new exposure paused. Expiry blocks late acceptance but does not cancel an accepted order.
++ Replace float-first spot formatting with exact Decimal helpers, preserving valid integer prices and approved buy ceilings/sell floors. Reject nonfinite and zero-rounded values and verify SDK wire encoding before signing.
++ Publish `hypergrok-trading-desk` as an npm resource package with an exact file allowlist, all seventeen skills and notices, seven roles, six plugin manifests and read-only tools. No runtime dependencies, JavaScript executor or install hooks are included. Contract and actual artifact checks guard release identity and private-state exclusions.
++ Refresh the pinned bootstrap, changed skill versions and reviewed hashes. The public Bot template contract is prepared for publication; current installation evidence is recorded separately from the earlier October 2 native acceptance.
+
 ## 1.4.8 - 2026-10-02
 
 + Require the bootstrap’s exact pinned release even when an older checkout passes its own check. Verify actual native skill name, description and complete Markdown body; repository hashes and staged save arguments do not prove stored instructions. Preserve internal whitespace and keep unreadable or different native content pending.

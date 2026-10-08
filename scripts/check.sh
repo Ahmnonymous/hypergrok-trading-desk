@@ -116,6 +116,8 @@ PY
 # The plugin distribution contract: manifests, shared identity, component paths.
 python3 scripts/check_manifests.py .
 python3 scripts/test_check_manifests.py
+python3 scripts/check_npm_package.py .
+python3 scripts/test_check_npm_package.py
 python3 scripts/check_grok_template.py .
 python3 scripts/test_check_grok_template.py
 python3 scripts/test_check_public_template.py

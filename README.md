@@ -10,11 +10,11 @@ Set up the Desk Lead in Grok Bot using the pinned bootstrap below. It opens with
 
 ## Start
 
-[Add HyperGrok Desk Lead to Grok Bot](https://x.ai/bot/1HXwKKdavqHZRzSsWbDCN), then send **Start the desk.** The v1.4.8 bootstrap installs the complete seventeen-skill release and verifies native role and skill instructions.
+The v1.5.0 bootstrap installs the complete seventeen-skill release and verifies native role and skill instructions. Its public template is being refreshed; use the pinned bootstrap below until publication is verified.
 
 Alternatively, open Grok Bot and paste this to a Bot:
 
-> Set up the HyperGrok trading desk from https://github.com/galleonlabs/hypergrok-trading-desk/blob/v1.4.8/skills/hypergrok-bootstrap/SKILL.md. Follow the bootstrap skill, use https://github.com/galleonlabs/hypergrok-trading-desk/blob/v1.4.8/SETUP.md for the complete runbook, and finish with its evidence receipt.
+> Set up the HyperGrok trading desk from https://github.com/galleonlabs/hypergrok-trading-desk/blob/v1.5.0/skills/hypergrok-bootstrap/SKILL.md. Follow the bootstrap skill, use https://github.com/galleonlabs/hypergrok-trading-desk/blob/v1.5.0/SETUP.md for the complete runbook, and finish with its evidence receipt.
 
 The desk starts in research mode. The first demo uses only Hyperliquid's public `/info` endpoint: no wallet, account read or order. Add a testnet API wallet when you want to practise with play money, and a mainnet one when you are ready.
 
@@ -27,6 +27,16 @@ python3 scripts/opening_bell.py --coin ETH
 ```
 
 It reports source and UTC time, mid/mark/oracle, 24-hour change and volume, hourly funding, open interest, spread and depth at 5/10/25 bps. Twenty book levels stop a few bps from the mid on a liquid perp, so it re-reads the book at a coarser `nSigFigs` page until each band is measured, names the page every figure came from, and still marks a band no page reaches as a floor rather than a total. `scripts/desk_doctor.py` then checks the release, team files, the reviewed skill bytes, desk folders and public connectivity. Both are read-only and standard-library Python.
+
+For automated reads, inspect `--schema` without touching the network, then use `--json`. Success and errors have a versioned contract; a failed read remains unavailable, and incomplete depth and doctor warnings retain their meaning. Snapshots accept canonical mixed-case coins and explicit HIP-3 markets:
+
+```bash
+python3 scripts/opening_bell.py --schema
+python3 scripts/opening_bell.py --coin xyz:TSLA --json
+python3 scripts/desk_doctor.py --offline --json
+```
+
+`--testnet` explicitly selects testnet. A custom API origin is labelled `custom`. HIP-3 discovery stays read-only; execution remains opt-in under the desk's normal ticket rules.
 
 ## Meet the desk
 
@@ -112,7 +122,7 @@ In Claude Code, install it from this repository:
 In Grok Build, install the reviewed release (tested with Grok Build 1.0.30):
 
 ```bash
-grok plugin install galleonlabs/hypergrok-trading-desk@v1.4.8 --trust
+grok plugin install galleonlabs/hypergrok-trading-desk@v1.5.0 --trust
 ```
 
 Grok Build reports the skills and agents directories; loading `rules/` is not verified.
@@ -131,6 +141,15 @@ The same pack installs as a skill:
 ```
 npm exec --package=skills@1.5.23 -- skills add galleonlabs/hypergrok-trading-desk
 ```
+
+The complete reviewed resources also ship on npm:
+
+```bash
+npm install --save-exact --ignore-scripts hypergrok-trading-desk@1.5.0
+python3 node_modules/hypergrok-trading-desk/scripts/desk_doctor.py --offline
+```
+
+The package contains the instructions, role profiles, plugin manifests and read-only Python tools. It has no JavaScript entry point, runtime dependencies or install hooks; installation does not start a desk or connect a wallet.
 
 Live listings: [skills.sh](https://www.skills.sh/galleonlabs/hypergrok-trading-desk) · [cursor.directory](https://cursor.directory/plugins/hypergrok) · [botdirectory.ai](https://botdirectory.ai/bots/hypergrok-trading-desk)
 

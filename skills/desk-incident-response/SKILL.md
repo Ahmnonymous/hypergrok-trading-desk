@@ -3,7 +3,7 @@ name: desk-incident-response
 description: What the desk does when something goes wrong on Hyperliquid - unknown send results, unexpected fills or positions, unprotected positions, stuck or orphaned orders, API outages, rate limiting, and suspected API wallet compromise. Contain first, reconcile from the exchange record, act only through approved tickets, then review. Use the moment anything does not match the ticket.
 license: MIT
 metadata:
-  version: "1.1.1"
+  version: "1.1.2"
   author: Galleon Labs
   category: desk
 ---
@@ -29,8 +29,9 @@ The Desk Lead confirms an owner (usually the Execution Trader for order/position
 1. Do not resend.
 2. `orderStatus` by cloid; `openOrders`; `userFills` since the send; `clearinghouseState`.
 3. Found: continue reconciliation as normal; journal that the response was lost.
-4. Not found: that is not proof. The original can still arrive after any number of clean checks, so a replacement waits until the send's `expiresAfter` deadline has passed and one further check comes back clean. Then report `unconfirmed, original expired at <UTC>`. A new send requires a fresh approval by id. If the send carried no expiry, burn the nonce with a `noop` and confirm it landed, or stop and hand the decision to the user.
-5. If the exchange later shows the original order after a second one was sent: the desk has double exposure. Go to playbook C.
+4. Not found: that is not proof. Wait until the signed `expiresAfter` deadline has passed, then reconcile again. Expiry prevents later acceptance; it does not cancel an order accepted before the deadline or remove its fills.
+5. Without expiry, follow `desk-execution-protocol`: a `noop` needs an exact recovery ticket, Risk PASS, approval by id and native-gate coverage, and must use the original exact signed nonce, the same API wallet signer and network. Only the Execution Trader sends it, once. Confirm noop acceptance and reconcile the original; a newer nonce cannot invalidate it, and a nonce-reuse rejection does not prove what happened. Missing original nonce or an unconfirmed noop leaves the send reserved and new risk paused; escalate to the Desk Lead and user.
+6. A replacement waits until later acceptance is impossible and existing exposure is reconciled, then needs a fresh ticket, Risk PASS and approval by id. If the exchange later shows the original order after a second one was sent: the desk has double exposure. Go to playbook C.
 
 ### B. Rejected order or partial fill
 

@@ -6,6 +6,8 @@
 
 <p align="center"><strong>Turn your Grok Bot into a 7-agent Hyperliquid trading desk.</strong></p>
 
+HyperGrok is an open-source Hyperliquid trading desk for AI agents: seven role profiles and seventeen agent skills for research, risk, execution and review. It runs in Grok Bot and installs as a plugin in Claude Code, Cursor and Grok Build. It starts read-only on public market data; trading needs your own API wallet and a ticket you approve.
+
 Set up the Desk Lead in Grok Bot using the pinned bootstrap below. It opens with a live, zero-key Hyperliquid market snapshot, builds research, risk, execution and review as separate agents, then proves the floor is ready. They brief you on markets, size your trades, send what you approve and tell you honestly how it went. You bring the ideas. Let them cook.
 
 ## Start

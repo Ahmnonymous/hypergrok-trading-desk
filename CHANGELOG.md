@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
++ Open the README with a one-paragraph definition of the desk and where it runs, so search engines and assistants can describe it accurately.
+
 ## 1.5.0 - 2026-10-08
 
 + Add offline `--schema` discovery and versioned JSON diagnostics to Opening Bell and the desk doctor. Invalid arguments and unavailable sources produce structured failures in JSON mode; warnings, skipped connectivity and incomplete depth keep their original meanings. Testnet selection is explicit and custom origins are labelled honestly.

@@ -126,3 +126,7 @@ python3 scripts/test_desk_doctor.py
 
 # Verify the published arithmetic without loading a wallet or SDK.
 python3 scripts/test_order_rounding.py
+
+# Demo-only Shariah research desk. Local simulator and fixtures. No network orders.
+python3 -m compileall -q halal_demo
+python3 -m unittest discover -s halal_demo/tests -t .

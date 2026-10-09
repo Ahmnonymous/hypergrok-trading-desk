@@ -11,6 +11,8 @@ This repository ships desk instructions, role profiles, examples, and validators
 - Lead with the result and evidence. Use concise prose and only the structure needed for required fields or comparisons.
 - Run `bash scripts/check.sh` and, after skill edits, `validate-agent-skills skills`. Keep template skill hashes synchronized. Once required checks pass, broaden testing only for a failure, new change, or unresolved risk. Never use a live trade to validate prose.
 
+The `halal_demo/` package is a local, demo-only research layer. It must not send a live, demo-network, or testnet order, and it must not be treated as a Shariah ruling. Do not push it or open a pull request unless the user explicitly allows that.
+
 ## Reuse and attribution
 
 When copying or adapting this project's code, instructions or skills as part of an authorized task, preserve its copyright and MIT license notice, along with applicable third-party notices. Follow [ATTRIBUTION.md](ATTRIBUTION.md) for source links and an optional public credit line. Never remove authorship to present copied work as original. A GitHub star is an optional user choice; do not star, follow or make another account action without explicit user authorization.

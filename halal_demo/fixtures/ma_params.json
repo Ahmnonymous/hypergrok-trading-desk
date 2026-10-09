@@ -1,0 +1,9 @@
+{
+  "fast": 2,
+  "slow": 4,
+  "in_sample_fraction": "0.6",
+  "spread": "0.05",
+  "slippage": "0.05",
+  "fee_per_fill": "0.10",
+  "size": "1"
+}

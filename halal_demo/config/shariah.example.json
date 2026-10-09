@@ -1,0 +1,18 @@
+{
+  "rule_version": "example-unresolved",
+  "reviewer": "UNSET - replace with the qualified adviser who signs this file",
+  "review_date": "UNSET",
+  "expiry": "2026-12-31T00:00:00Z",
+  "evidence_source": "UNSET - no screening evidence has been recorded",
+  "decision_status": "unresolved",
+  "offline_test_only": false,
+  "is_religious_ruling": false,
+  "accepted_ownership": [],
+  "accepted_settlement": [],
+  "accepted_business_activities": [],
+  "prohibited_business_activities": [],
+  "prohibited_instruments": [],
+  "crypto_eligibility": [],
+  "stock_financial_criteria": null,
+  "approvals": []
+}

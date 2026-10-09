@@ -188,3 +188,7 @@ assets/      the mascot - use it as your Bots' avatar
 [MIT licensed](LICENSE), with the copyright and permission notice retained when reusing copies or substantial portions. Created by [Andrew Wilkinson](https://andrewwilkinson.io) and [Galleon Labs](https://github.com/galleonlabs).
 
 See [reuse and attribution](ATTRIBUTION.md) for a ready-to-copy credit line. If HyperGrok Trading Desk helps your work, [a star on the original repository](https://github.com/galleonlabs/hypergrok-trading-desk) is appreciated and entirely optional.
+
+## Demo-only Shariah research desk
+
+This fork also contains a local practice desk in [halal_demo](halal_demo/README.md). It is for study on this computer: simulated orders only, a deterministic Shariah checklist, and a deterministic risk check. It does not use the Hyperliquid perpetual order path. The seventeen-skill HyperGrok pack above is unchanged from the reviewed v1.5.0 release.

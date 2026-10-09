@@ -3,6 +3,7 @@
 ## Unreleased
 
 + Open the README with a one-paragraph definition of the desk and where it runs, so search engines and assistants can describe it accurately.
++ Add a local demo-only research desk under `halal_demo/`: deterministic Shariah and risk gates, simulated MT5, stock-paper, and Binance Spot adapters, and an offline moving-average study. No network orders and no change to the reviewed seventeen-skill pack.
 
 ## 1.5.0 - 2026-10-08
 

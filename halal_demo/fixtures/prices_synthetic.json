@@ -1,0 +1,7 @@
+{
+  "dataset_version": "synthetic-ma-1",
+  "source": "offline fixture written for the demo research tests",
+  "label": "synthetic",
+  "as_of": "2026-10-09T00:00:00Z",
+  "symbol": "DEMOHALAL"
+}

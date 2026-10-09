@@ -1,0 +1,6 @@
+{
+  "mode": "demo",
+  "allow_network_orders": false,
+  "transport": "local_simulator",
+  "allow_offline_test_policy": false
+}

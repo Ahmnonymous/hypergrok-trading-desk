@@ -1,0 +1,16 @@
+{
+  "rule_version": "demo-risk-2026-10-09",
+  "account_currency": "USD",
+  "max_risk_per_trade_percent": "0.25",
+  "daily_loss_stop_percent": "1",
+  "max_open_risk_percent": "0.75",
+  "max_open_positions": 3,
+  "max_price_age_seconds": 120,
+  "max_attempts_per_proposal": 1,
+  "limits_expiry": "2026-12-31T00:00:00Z",
+  "correlation_clusters": {
+    "demo_equities": ["DEMOHALAL"],
+    "demo_cash": ["DEMOCASH"],
+    "demo_crypto": ["DEMOCOINUSDT"]
+  }
+}
